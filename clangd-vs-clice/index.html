@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Measured clangd and clice indexing time and process-tree memory on LLVM, with a sourced comparison of features and maintenance.">
+  <title>clangd vs clice | An LLVM indexing comparison</title>
+  <link rel="canonical" href="https://arcsinx.github.io/clangd-vs-clice/">
+  <link rel="stylesheet" href="style.css">
+  <script src="results.js" defer></script>
+  <script src="report.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#benchmark">Skip to benchmark</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="https://github.com/ArcsinX">ArcsinX</a>
+      <nav aria-label="Sections">
+        <a href="#benchmark">Benchmark</a>
+        <a href="#features">Features</a>
+        <a href="#maintenance">Maintenance</a>
+        <a href="#method">Method</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <div class="overview">
+      <div class="wrap intro">
+        <p class="eyebrow">C++ language servers <span>·</span> November 2026</p>
+        <h1>clangd <em>vs</em> clice</h1>
+        <p class="deck">I wrote this article to give a fair comparison of clangd and clice. The clice 1.0 announcement reached a sweeping conclusion that I think goes further than the evidence supports.</p>
+        <p class="byline">The measurements come from the macOS test environment on my personal laptop. I’m a clangd maintainer, and I’m writing in my personal capacity. The views here are mine alone. <span>Aleksandr Platonov</span></p>
+        <figure class="release-claim">
+          <blockquote>“Overall, clice surpasses clangd in ease of use, feature support, and performance.”</blockquote>
+          <figcaption><a href="https://ykiko.me/en/articles/2105384023094834022/#language-server">ykiko’s clice 1.0 release article</a></figcaption>
+        </figure>
+        <p class="claim-response">The picture is more mixed. Setup depends on the editor and toolchain, the two servers support different workflows, and performance depends on what you measure. I look at all three, alongside project maintenance.</p>
+        <p class="provenance">clangd 23.1.0 <span>·</span> clice 1.0.0 <span>·</span> macOS arm64</p>
+      </div>
+
+      <section class="wrap benchmark" id="benchmark" aria-labelledby="benchmark-title">
+        <div class="benchmark-heading">
+          <div>
+            <p class="eyebrow">Cold background indexing</p>
+            <h2 id="benchmark-title">Time, memory, and disk</h2>
+          </div>
+          <p class="scope">clangd + clang-tidy <span>·</span> 723 translation units</p>
+        </div>
+        <p id="benchmark-note" class="benchmark-note" aria-live="polite"></p>
+        <div class="metrics" id="metric-cards"></div>
+        <noscript><p>JavaScript displays the benchmark charts and per-run values. The raw data is available in the benchmark repository.</p></noscript>
+        <p class="chart-caption">These runs measure first-time background indexing. Editor response latency, incremental changes, and reopening a project with a warm cache call for separate measurements.</p>
+        <p class="chart-caption">Each memory sample sums resident memory across the server and every descendant. The average and peak come from those process-tree totals. Each memory bar is the median of the corresponding per-run statistic.</p>
+        <details id="runs" class="runs">
+          <summary>Inspect individual runs</summary>
+          <div class="table-scroll" id="run-table" tabindex="0" role="region" aria-label="Individual benchmark runs"></div>
+        </details>
+        <div class="index-tradeoff">
+          <p>clice can keep multiple variants of a header and records each translation unit’s include tree. Additional analysis and a richer index can make a longer first pass worthwhile. Storage format and implementation choices can also affect the time and size, so the benchmark leaves the cause of the gap open.</p>
+          <p>clangd still finished background indexing sooner on this workload. That is a concrete counterexample to the release article’s broad claim that clice surpasses clangd in performance.</p>
+          <p class="sources"><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/symbol-index.md">clice index design</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/cli/index.md#inspecting-the-index">What clice records</a></p>
+        </div>
+        <p class="linux-note">I saw the same pattern on Linux. In my own testing there, clice took substantially longer to finish background indexing than clangd. That Linux test was informal. The timed measurements above come from macOS.</p>
+        <div class="warm-scenarios">
+          <h3>Where a warm cache could favor clice</h3>
+          <p><strong>Reopening a project.</strong> clangd loads cached background-index shards and merges them into an in-memory index. clice opens its persisted LMDB index and reads records on demand. That can reduce the work clice has to do up front when reopening a large project.</p>
+          <p><strong>Opening an indexed file.</strong> With default settings, clangd builds a preamble when it opens a file even if the project index is already available. Closing the file drops its document worker, so reopening it normally builds the preamble again. clice can answer some requests, such as navigation, directly from an up-to-date background index while the document compile is pending. Its default mode still compiles the document when needed. The <code>readonly</code> rules can serve browsing from the index without building an editor preamble.</p>
+          <p><strong>Reusing a preamble.</strong> clice's background index and editor preamble cache have separate roles. A file that was only background-indexed can still need its first editor preamble. When a compatible preamble is already cached, clice can reuse it after a close or a server restart, which may make an include-heavy file quicker to reopen.</p>
+          <p>These are plausible warm-cache advantages. The timings above measure cold indexing.</p>
+          <p class="sources"><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/index/BackgroundRebuild.cpp">clangd shard loading</a><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang/lib/Frontend/PrecompiledPreamble.cpp#L197">clangd’s temporary preamble storage</a><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/TUScheduler.cpp">clangd document lifecycle</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/symbol-index.md#storage">clice index storage</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/guide/configuration.md#L752-L758">clice document modes</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/incremental-parse.md#content-addressed-storage">clice preamble cache</a></p>
+        </div>
+      </section>
+    </div>
+
+    <div class="wrap article">
+      <section class="section" id="features" aria-labelledby="features-title">
+        <p class="eyebrow">Editor workflows</p>
+        <h2 id="features-title">Where the tools differ</h2>
+        <p class="section-intro">Both cover completion, diagnostics, navigation, references, rename, formatting and semantic highlighting. The differences show up in specific workflows. This comparison uses clice’s tagged 1.0 documentation and clangd’s published docs and release source.</p>
+        <div class="ease">
+          <h3>Ease of use</h3>
+          <p>Both servers can discover a CMake-generated <code>compile_commands.json</code>. clice’s automatic probing can simplify setup for toolchains such as nvcc or zig <code>cc</code>, where clangd may need driver or include-path configuration. The editor can change the picture. clice’s VS Code extension bundles the server, while Zed already ships clangd as its built-in C and C++ server and requires configuration to switch to clice.</p>
+          <p class="sources"><a href="https://clangd.llvm.org/installation">clangd setup</a><a href="https://clangd.llvm.org/guides/system-headers#query-driver">clangd driver discovery</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/guide/editors.md">clice 1.0 editor setup</a></p>
+        </div>
+        <div class="table-scroll feature-table" tabindex="0" role="region" aria-label="Feature comparison">
+          <table>
+            <thead><tr><th scope="col">Workflow</th><th scope="col">clangd</th><th scope="col">clice</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">C++20 named modules</th><td>Experimental support behind <code>--experimental-modules-support</code>. <a href="https://clangd.llvm.org/features#experimental-c20-modules-support">clangd docs</a></td><td>Dependency-aware BMI builds and caching, plus editor features such as completing an <code>import</code> and navigating to a module declaration. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/modules.md">clice 1.0 docs</a></td></tr>
+              <tr><th scope="row">Header compile context</th><td>Borrows a command from an includer when available, with filename-based inference as a fallback. <a href="https://clangd.llvm.org/design/compile-commands#commands-for-header-files">clangd design</a></td><td>Lets the user select the includer and carries the preprocessor and declaration context into a non-self-contained header. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/header-contexts.md">clice 1.0 docs</a></td></tr>
+              <tr><th scope="row">Semantic highlighting</th><td>Sends full-document tokens and delta updates. A type alias is reported as <code>type</code>. Inactive branches use a separate region notification when the editor supports it, with a <code>comment</code> token fallback. <a href="https://clangd.llvm.org/features#semantic-highlighting">Token kinds and modifiers</a><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/ClangdLSPServer.cpp#L613">LSP capabilities</a></td><td>Also answers range requests. It emits finer-grained kinds such as <code>typeAlias</code> and <code>formatSpecifier</code>, and can keep semantic colors from another indexed header context while marking those tokens inactive. The editor and theme determine which distinctions you see. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/semantic-tokens.md">Semantic tokens</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/header-contexts.md#choosing-a-host">Header contexts</a></td></tr>
+              <tr><th scope="row">Compiler crash isolation</th><td>Compilation runs on threads inside the LSP server, so a fatal compiler error can take down the server. <a href="https://clangd.llvm.org/design/threads">clangd design</a></td><td>Separate compiler worker processes let the server recover from a worker crash. <a href="https://ykiko.me/en/articles/2105384023094834022/#language-server">Release article</a></td></tr>
+              <tr><th scope="row">Shared remote index</th><td>Builds with remote-index support can query a shared server for project-wide symbols and references while indexing edited files locally. LLVM runs a public endpoint at <code>clangd-index.llvm.org:5900</code>. clangd can also load a prebuilt index file. <a href="https://clangd.llvm.org/guides/remote-index">Remote index guide</a><a href="https://clangd.llvm.org/config#external">External index configuration</a></td><td>Documents a local persistent index shared by its CLI and server. An equivalent shared remote-index client is absent from the 1.0 documentation. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/cli/index.md">clice 1.0 docs</a></td></tr>
+              <tr><th scope="row">Refactoring actions</th><td>Its code actions include <strong>Define out-of-line</strong>, <strong>Define inline</strong>, Extract Function, Extract Variable, Remove Using Namespace, Convert to Raw String, and Convert to Scoped Enum. <a href="https://github.com/llvm/llvm-project/tree/llvmorg-23.1.0/clang-tools-extra/clangd/refactor/tweaks">clangd 23.1.0 tweaks</a></td><td>Its documented actions include defining methods inline or out of line, defining missing members, implementing pure virtual methods, and reordering definitions. The 1.0 action list omits Extract Function and Extract Variable. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/code-action.md">clice 1.0 docs</a></td></tr>
+              <tr><th scope="row">clang-tidy integration</th><td>Runs configured checks on open files and offers fixes. <code>.clangd</code> can add or remove checks and override their options. <code>FastCheckFilter: Strict</code> is the default and runs checks measured to be fast. <code>Loose</code> also allows unmeasured checks. <code>None</code> removes the speed filter. <a href="https://clangd.llvm.org/config#fastcheckfilter">clangd speed filter</a></td><td>Runs configured checks on open files and offers fixes. By default it also limits the editor to checks measured to be fast and names excluded checks. In <code>clice.toml</code>, setting <code>slow_clang_tidy_checks = true</code> under <code>[diagnostics]</code> allows configured slow or unmeasured checks. <code>clice lint</code> runs them in batch and can index from the same parses. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/guide/configuration.md#diagnostics">clice 1.0 diagnostics settings</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/cli/lint.md">Batch linting</a></td></tr>
+              <tr><th scope="row">Include hygiene</th><td>Include Cleaner flags missing direct includes and unused includes and offers fixes. <a href="https://clangd.llvm.org/guides/include-cleaner">clangd guide</a></td><td>Offers include insertion for undeclared names. An equivalent built-in unused-include diagnostic is absent from the 1.0 diagnostics guide. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/diagnostics.md">clice 1.0 docs</a></td></tr>
+              <tr><th scope="row">Navigation from <code>break</code> and <code>continue</code></th><td>Go-to-definition can jump to the corresponding enclosing control statement. <a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/XRefs.cpp">Release source</a></td><td>Go-to-definition on these keywords is documented as unsupported. <a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/features/navigation.md#implicit-targets">clice 1.0 docs</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="check-cost">
+          <h3>Where the fast-check list comes from</h3>
+          <p>clice 1.0 ships a byte-for-byte copy of clangd 23.1.0’s generated cost table. clangd generates it by timing individual checks on Clang’s <code>Sema.cpp</code>. clice uses the table at runtime to filter the checks selected by <code>.clang-tidy</code>. The shared entry for <code>misc-const-correctness</code> marks it slow and records a 103% increase in parsing time, about twice the baseline for that file. Both editors skip it by default even when the project enables it.</p>
+          <p class="sources"><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/TidyFastChecks.inc#L297">clangd cost table</a><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/TidyFastChecks.py">clangd timing script</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/src/compile/tidy_check_costs.inc#L297">clice’s copy</a><a href="https://github.com/clice-io/clice/tree/v1.0.0/tests/diagnostics/clang_tidy/20_slow_checks">clice opt-in test</a></p>
+        </div>
+      </section>
+
+      <section class="section" id="maintenance" aria-labelledby="maintenance-title">
+        <p class="eyebrow">Project continuity</p>
+        <h2 id="maintenance-title">Who maintains each server?</h2>
+        <div class="columns">
+          <article>
+            <h3>clangd</h3>
+            <p>LLVM lists <strong>two active clangd maintainers</strong>, Nathan Ridge and me, Aleksandr Platonov. Contributors continue to review patches by hand. Over the three months ending November 18, 2026, <strong>61 commits</strong> touched <code>clang-tools-extra/clangd</code> on LLVM’s main branch.</p>
+            <p class="sources"><a href="https://github.com/llvm/llvm-project/blob/main/clang-tools-extra/Maintainers.md#clangd">LLVM maintainer list</a><a href="https://github.com/llvm/llvm-project/pulls?q=is%3Apr+label%3Aclangd">clangd patch queue</a></p>
+          </article>
+          <article>
+            <h3>clice</h3>
+            <p>Over the same period, <strong>386 commits</strong> landed in the clice repository. At the 1.0 tag, 892 of 1,000 reachable commits list ykiko as author. Other contributors are visible in the history. In the release article, ykiko says maintenance will continue at a lower intensity, with incremental optimizations and bug fixes driven by user feedback. The concentration of past work makes succession worth watching.</p>
+            <p class="sources"><a href="https://github.com/clice-io/clice/commits/v1.0.0/">Tagged history</a><a href="https://ykiko.me/en/articles/2105384023094834022/#to-be-continued">Author’s maintenance plans</a></p>
+          </article>
+        </div>
+        <p>LLVM’s early 2026 call for help described genuine staffing pressure and raised removal as a possibility if maintenance dwindled. The current maintainer list and shipped work show why the release article’s description of clangd as effectively unmaintained is incomplete. The public discussion described a staffing contingency, and LLVM continues to ship clangd.</p>
+        <p class="sources"><a href="https://discourse.llvm.org/t/help-needed-with-clangd-maintenance/89820">LLVM call for help</a><a href="https://github.com/clangd/clangd/releases/tag/23.1.0">clangd release</a></p>
+        <p>Ykiko describes using coding agents for debugging, cleanup, and increasingly complex implementation work. Agent assistance can make drafting changes faster. The release article gives no audited share of AI-generated code, and a commit count measures neither engineering effort nor review effort.</p>
+        <p class="sources"><a href="https://ykiko.me/en/articles/2105384023094834022/#how-did-we-get-here">Author’s development account</a></p>
+        <details class="commit-method">
+          <summary>How I counted commits</summary>
+          <p>The window covers August 19 through November 18, 2026 UTC. I counted commits reachable from a pinned snapshot of each main branch. The clangd count filters for its directory in LLVM’s monorepo. The clice count covers its whole repository, including editor integrations, documentation, and other tools. The API links use one result per page, so the last page number gives the count.</p>
+          <p class="sources"><a href="https://api.github.com/repos/llvm/llvm-project/commits?sha=5d20c85f4e1b8755b655bf1782b094fb35ec48d1&amp;path=clang-tools-extra%2Fclangd&amp;since=2026-08-18T23%3A59%3A59Z&amp;until=2026-11-18T23%3A59%3A59Z&amp;per_page=1">clangd count query</a><a href="https://api.github.com/repos/clice-io/clice/commits?sha=d4e8471db3127cdc76ed79bac5b300a36f6eaecd&amp;since=2026-08-18T23%3A59%3A59Z&amp;until=2026-11-18T23%3A59%3A59Z&amp;per_page=1">clice count query</a></p>
+        </details>
+      </section>
+
+      <section class="section" id="method" aria-labelledby="method-title">
+        <p class="eyebrow">Reproducibility</p>
+        <h2 id="method-title">How the benchmark ran</h2>
+        <dl class="method">
+          <div><dt>Workload</dt><dd>723 existing translation units from the LLVM CMake compilation database at <code>bd49d77ae3c0</code>. The workload includes 245 units under <code>clang-tools-extra/clangd</code> and 478 under <code>clang-tools-extra/clang-tidy</code>. One stale database entry referred to a file absent from the checkout.</dd></div>
+          <div><dt>Host and binaries</dt><dd>macOS 27.2.1 on arm64, eight logical CPUs and 8 GiB RAM. I used the official macOS binaries of clangd 23.1.0 and clice 1.0.0. The release article uses the same clangd version in its examples. Both received the same CMake commands with staged paths and the macOS 27.2 SDK. The commands kept the textual forced includes and dropped binary PCH inputs produced by the local compiler. <a href="https://github.com/clangd/clangd/releases/tag/23.1.0">clangd release</a> · <a href="https://github.com/clice-io/clice/releases/tag/v1.0.0">clice release</a></dd></div>
+          <div><dt>Timing</dt><dd>Wall time from sending the initialized and open-file messages to the last background-index progress-end event. The harness follows clice’s additional passes when its logs show queued retries. I ran one server at a time in a regular macOS Terminal, with a fresh index cache for every run. The order was clangd, clice, clice, clangd, clangd, clice. OS file caches were left in their normal state.</dd></div>
+          <div><dt>Worker settings</dt><dd>clangd ran with <code>-j=4</code> and normal background indexing priority. clice used <code>background = 4</code>, <code>max = 4</code>, <code>foreground = 1</code>, and <code>background_delay_ms = 0</code> under <code>[workers]</code>. Both had a background concurrency ceiling of four. clice can reduce concurrency under memory pressure.</dd></div>
+          <div><dt>Memory</dt><dd>macOS <code>proc_pid_rusage</code> was sampled about every 200 ms. Each row sums the resident set size of the server and all descendants. The mean averages those samples, and the peak is the largest sampled sum. Summed RSS can count shared pages in more than one process and can miss peaks between samples. Raw samples also include physical footprint.</dd></div>
+          <div><dt>Sandbox check</dt><dd>An exploratory run showed that clice’s memory controller depends on <code>vm.page_reusable_count</code>, which the task sandbox denied. The published measurements come from the native Terminal series. A first-pass-only clice pilot led to retry handling in the harness. The already completed clangd run was retained. <a href="https://github.com/clice-io/clice/blob/v1.0.0/src/worker/resources.cpp">clice resource handling</a></dd></div>
+          <div><dt>Index size</dt><dd>Logical bytes of the persisted symbol index after clean shutdown. The total covers clangd’s <code>*.idx</code> shards or clice’s <code>index.mdb</code> database. Locks, logs, PCH and PCM caches are outside this total. Filesystem-allocated bytes are also in the raw data. The formats and indexed coverage can differ.</dd></div>
+          <div><dt>Completion</dt><dd>Translation-unit counts come from the server logs. A progress end event can also occur after skipped work. The results include coverage so a shorter or lower-memory incomplete run cannot be mistaken for an equivalent completed index. The two indexes record different information. Coverage here counts translation units in the logs.</dd></div>
+        </dl>
+        <p><a class="button" href="https://github.com/ArcsinX/clangd-vs-clice-benchmark">Benchmark scripts, input manifest, and raw data</a></p>
+      </section>
+      <section class="section conclusion" aria-labelledby="conclusion-title">
+        <h2 id="conclusion-title">My take</h2>
+        <p>clice is a worthwhile project with ideas I’d like to see more language servers explore. Process isolation addresses a real reliability problem. Its work on named modules and non-self-contained headers makes a concrete difference for projects that use them.</p>
+        <p>Those strengths make clice an innovative alternative. Calling it a successor that surpasses clangd across the board would take much broader evidence. The label “next-generation” is too vague to settle which tool fits a given codebase. The workflows you use, the resources your machine has, and the support you can count on matter more.</p>
+      </section>
+    </div>
+  </main>
+  <footer><div class="wrap footer"><span>ArcsinX</span><a href="https://github.com/ArcsinX/ArcsinX.github.io/tree/main/clangd-vs-clice">Page source</a></div></footer>
+</body>
+</html>
