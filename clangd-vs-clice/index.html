@@ -60,7 +60,7 @@
           <p>clangd still finished background indexing sooner on this workload. That is a concrete counterexample to the release article’s broad claim that clice surpasses clangd in performance.</p>
           <p class="sources"><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/symbol-index.md">clice index design</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/cli/index.md#inspecting-the-index">What clice records</a></p>
         </div>
-        <p class="linux-note">I saw the same pattern on Linux. In my own testing there, clice took substantially longer to finish background indexing than clangd. That Linux test was informal. The timed measurements above come from macOS.</p>
+        <p class="benchmark-paragraph">I saw the same pattern on Linux. In my own testing there, clice took substantially longer to finish background indexing than clangd. That Linux test was informal. The timed measurements above come from macOS.</p>
         <div class="warm-scenarios">
           <h3>Where a warm cache could favor clice</h3>
           <p><strong>Reopening a project.</strong> clangd loads cached background-index shards and merges them into an in-memory index. clice opens its persisted LMDB index and reads records on demand. That can reduce the work clice has to do up front when reopening a large project.</p>

@@ -123,7 +123,7 @@ summary { color: var(--teal); cursor: pointer; padding: .65rem 0; font-weight: 6
 .runs table { min-width: 56rem; }
 .index-tradeoff, .warm-scenarios { max-width: 55rem; margin-top: 1rem; }
 .index-tradeoff p + p, .warm-scenarios p { margin-top: .55rem; }
-.linux-note { margin-top: .85rem; padding: .75rem 1rem; background: var(--teal-wash); border-left: .2rem solid #329982; }
+.benchmark-paragraph { max-width: 55rem; margin-top: .85rem; }
 .runs td, .runs th { padding: .55rem .65rem; }
 .article { padding-bottom: 3.3rem; }
 .section { padding-top: clamp(2rem, 5vw, 3.8rem); }
