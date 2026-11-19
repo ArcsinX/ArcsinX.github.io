@@ -81,7 +81,7 @@ for (const metric of metrics) {
 if (runs.length) {
   const table = add(document.querySelector("#run-table"), "table");
   const header = table.createTHead().insertRow();
-  for (const title of ["Run", "Server", "TUs indexed", "Time", "Avg RSS", "Peak RSS", "Index size", "Max descendants", "Memory kills"]) {
+  for (const title of ["Run", "Server", "TUs indexed", "Time", "Avg RSS", "Peak RSS", "Index size"]) {
     add(header, "th", title).scope = "col";
   }
   const body = table.createTBody();
@@ -92,7 +92,6 @@ if (runs.length) {
       run.tool, `${run.completed_units_in_log}/${run.requested_units}${completed(run) ? "" : " (incomplete)"}`,
       format(run.seconds, "s", 1), format(run.average_rss_mib, "MiB", 0),
       format(run.peak_rss_mib, "MiB", 0), format(run.index_size_mib, "MiB", 1),
-      String(run.max_descendants), String(run.memory_worker_kills),
     ]) add(row, "td", value);
   });
 } else {
