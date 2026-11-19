@@ -28,13 +28,13 @@
       <div class="wrap intro">
         <p class="eyebrow">C++ language servers <span>·</span> November 2026</p>
         <h1>clangd <em>vs</em> clice</h1>
-        <p class="deck">I tried clice after the 1.0 release. One line in the announcement made me want to compare it directly with clangd.</p>
-        <p class="byline">I ran the benchmark on my personal Mac. The opinions here are my own.</p>
+        <p class="deck">I wrote this article to give a fair comparison of clangd and clice. The clice 1.0 announcement reached a sweeping conclusion that I think goes further than the evidence supports.</p>
+        <p class="byline">The measurements come from the macOS test environment on my personal laptop. I’m writing in my personal capacity. The views here are mine alone.</p>
         <figure class="release-claim">
           <blockquote>“Overall, clice surpasses clangd in ease of use, feature support, and performance.”</blockquote>
           <figcaption><a href="https://ykiko.me/en/articles/2105384023094834022/#language-server">ykiko’s clice 1.0 release article</a></figcaption>
         </figure>
-        <p class="claim-response">I think that claim is too broad. I wanted to compare the two fairly, so I looked at how each fits into an editor workflow and timed them indexing the same code. I also went through their recent commit history and looked at who’s maintaining each project.</p>
+        <p class="claim-response">The picture is more mixed. Setup depends on the editor and toolchain, the two servers support different workflows, and performance depends on what you measure. I look at all three, alongside project maintenance.</p>
         <p class="provenance">clangd 23.1.0 <span>·</span> clice 1.0.0 <span>·</span> macOS arm64</p>
       </div>
 
@@ -49,24 +49,24 @@
         <p id="benchmark-note" class="benchmark-note" aria-live="polite"></p>
         <div class="metrics" id="metric-cards"></div>
         <noscript><p>JavaScript displays the benchmark charts and per-run values. The raw data is available in the benchmark repository.</p></noscript>
-        <p class="chart-caption">I started each run with an empty index cache. Completion, edits, and reopening a project are separate workloads.</p>
-        <p class="chart-caption">I sampled the whole process tree and added up its resident memory each time. The bars show the median of the per-run averages and the median of the per-run peaks.</p>
+        <p class="chart-caption">These runs measure first-time background indexing. Editor response latency, incremental changes, and reopening a project with a warm cache call for separate measurements.</p>
+        <p class="chart-caption">Each memory sample sums resident memory across the server and every descendant. The average and peak come from those process-tree totals. Each memory bar is the median of the corresponding per-run statistic.</p>
         <details id="runs" class="runs">
           <summary>Inspect individual runs</summary>
           <div class="table-scroll" id="run-table" tabindex="0" role="region" aria-label="Individual benchmark runs"></div>
         </details>
         <div class="index-tradeoff">
-          <p>clice keeps multiple variants of a header and records each translation unit’s include tree. If you need that information, a longer first index can be a fair trade. The storage format and the way each server builds its index can also affect the time and disk space.</p>
-          <p>For this workload, though, clangd finished the first index sooner. That’s one concrete case where the release article’s performance claim breaks down.</p>
+          <p>clice can keep multiple variants of a header and records each translation unit’s include tree. Additional analysis and a richer index can make a longer first pass worthwhile. Storage format and implementation choices can also affect the time and size, so the benchmark leaves the cause of the gap open.</p>
+          <p>clangd still finished background indexing sooner on this workload. That is a concrete counterexample to the release article’s broad claim that clice surpasses clangd in performance.</p>
           <p class="sources"><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/symbol-index.md">clice index design</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/cli/index.md#inspecting-the-index">What clice records</a></p>
         </div>
-        <p class="benchmark-paragraph">I saw clice take substantially longer to index on Linux, too. That was an informal test. The figures above come from the macOS runs.</p>
+        <p class="benchmark-paragraph">I saw the same pattern on Linux. In my own testing there, clice took substantially longer to finish background indexing than clangd. That Linux test was informal. The timed measurements above come from macOS.</p>
         <div class="warm-scenarios">
           <h3>Where a warm cache could favor clice</h3>
-          <p><strong>Reopening a project.</strong> clangd loads cached background-index shards and merges them into an in-memory index. clice opens its persisted LMDB index and reads records on demand. On a large project, that can mean less work up front for clice.</p>
-          <p><strong>Opening an indexed file.</strong> With default settings, clangd builds a preamble when it opens a file even if the project index is already available. Closing the file drops its document worker. When you reopen the file, clangd usually builds the preamble again. clice can answer some requests, such as navigation, directly from an up-to-date background index while the document compile is pending. Its default mode still compiles the document when needed. The <code>readonly</code> rules can serve browsing from the index without building an editor preamble.</p>
-          <p><strong>Reusing a preamble.</strong> A file can be in clice’s background index and still need a preamble the first time you open it. Once clice has cached that preamble, it can reuse it after you close the file or restart the server, as long as the preamble is still valid. That could save time on a file with a lot of includes.</p>
-          <p>I’d expect clice to do better in some of these cases. The benchmark above only times the first index.</p>
+          <p><strong>Reopening a project.</strong> clangd loads cached background-index shards and merges them into an in-memory index. clice opens its persisted LMDB index and reads records on demand. That can reduce the work clice has to do up front when reopening a large project.</p>
+          <p><strong>Opening an indexed file.</strong> With default settings, clangd builds a preamble when it opens a file even if the project index is already available. Closing the file drops its document worker, so reopening it normally builds the preamble again. clice can answer some requests, such as navigation, directly from an up-to-date background index while the document compile is pending. Its default mode still compiles the document when needed. The <code>readonly</code> rules can serve browsing from the index without building an editor preamble.</p>
+          <p><strong>Reusing a preamble.</strong> clice's background index and editor preamble cache have separate roles. A file that was only background-indexed can still need its first editor preamble. When a compatible preamble is already cached, clice can reuse it after a close or a server restart, which may make an include-heavy file quicker to reopen.</p>
+          <p>These are plausible warm-cache advantages. The timings above measure cold indexing.</p>
           <p class="sources"><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/index/BackgroundRebuild.cpp">clangd shard loading</a><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang/lib/Frontend/PrecompiledPreamble.cpp#L197">clangd’s temporary preamble storage</a><a href="https://github.com/llvm/llvm-project/blob/llvmorg-23.1.0/clang-tools-extra/clangd/TUScheduler.cpp">clangd document lifecycle</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/symbol-index.md#storage">clice index storage</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/guide/configuration.md#L752-L758">clice document modes</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/design/incremental-parse.md#content-addressed-storage">clice preamble cache</a></p>
         </div>
       </section>
@@ -76,10 +76,10 @@
       <section class="section" id="features" aria-labelledby="features-title">
         <p class="eyebrow">Editor workflows</p>
         <h2 id="features-title">Where the tools differ</h2>
-        <p class="section-intro">Both servers cover the basics, including completion, diagnostics, navigation, rename, and formatting. Here are the differences that stood out in the release docs and source.</p>
+        <p class="section-intro">Both cover completion, diagnostics, navigation, references, rename, formatting and semantic highlighting. The differences show up in specific workflows. This comparison uses clice’s tagged 1.0 documentation and clangd’s published docs and release source.</p>
         <div class="ease">
           <h3>Ease of use</h3>
-          <p>Both servers can discover a CMake-generated <code>compile_commands.json</code>. clice’s automatic probing can simplify setup for toolchains such as nvcc or zig <code>cc</code>, where clangd may need driver or include-path configuration. The editor matters, too. The clice extension for VS Code bundles the server. In Zed, clangd comes built in for C and C++ and switching to clice takes some configuration.</p>
+          <p>Both servers can discover a CMake-generated <code>compile_commands.json</code>. clice’s automatic probing can simplify setup for toolchains such as nvcc or zig <code>cc</code>, where clangd may need driver or include-path configuration. The editor can change the picture. clice’s VS Code extension bundles the server, while Zed already ships clangd as its built-in C and C++ server and requires configuration to switch to clice.</p>
           <p class="sources"><a href="https://clangd.llvm.org/installation">clangd setup</a><a href="https://clangd.llvm.org/guides/system-headers#query-driver">clangd driver discovery</a><a href="https://github.com/clice-io/clice/blob/v1.0.0/docs/en/guide/editors.md">clice 1.0 editor setup</a></p>
         </div>
         <div class="table-scroll feature-table" tabindex="0" role="region" aria-label="Feature comparison">
@@ -107,7 +107,7 @@
 
       <section class="section" id="maintenance" aria-labelledby="maintenance-title">
         <p class="eyebrow">Project continuity</p>
-        <h2 id="maintenance-title">Who’s working on each project?</h2>
+        <h2 id="maintenance-title">Who maintains each server?</h2>
         <div class="columns">
           <article>
             <h3>clangd</h3>
@@ -116,13 +116,13 @@
           </article>
           <article>
             <h3>clice</h3>
-            <p>Over the same period, <strong>386 commits</strong> landed in the clice repository. At the 1.0 tag, ykiko is listed as the author of 892 of the 1,000 commits. In the release post, ykiko says they’ll spend less time on the project and focus on optimizations and bug fixes. With so much of the work coming from one person, I’m curious how much of the maintenance other contributors will take on.</p>
+            <p>Over the same period, <strong>386 commits</strong> landed in the clice repository. At the 1.0 tag, 892 of 1,000 reachable commits list ykiko as author. Other contributors are visible in the history. In the release article, ykiko says maintenance will continue at a lower intensity, with incremental optimizations and bug fixes driven by user feedback. The concentration of past work makes succession worth watching.</p>
             <p class="sources"><a href="https://github.com/clice-io/clice/commits/v1.0.0/">Tagged history</a><a href="https://ykiko.me/en/articles/2105384023094834022/#to-be-continued">Author’s maintenance plans</a></p>
           </article>
         </div>
-        <p>LLVM asked for help with clangd maintenance in early 2026. The discussion raised the possibility of removing clangd if it couldn’t get enough maintainers. LLVM still ships clangd, and patches are still being reviewed.</p>
+        <p>LLVM’s early 2026 call for help described genuine staffing pressure and raised removal as a possibility if maintenance dwindled. The current maintainer list and shipped work show why the release article’s description of clangd as effectively unmaintained is incomplete. The public discussion described a staffing contingency, and LLVM continues to ship clangd.</p>
         <p class="sources"><a href="https://discourse.llvm.org/t/help-needed-with-clangd-maintenance/89820">LLVM call for help</a><a href="https://github.com/clangd/clangd/releases/tag/23.1.0">clangd release</a></p>
-        <p>Ykiko describes using coding agents for debugging, cleanup, and increasingly complex implementation work. That can speed up drafting. The post gives no breakdown of how much code was AI-generated. The commit totals tell us how many changes landed, with little indication of the work that went into writing or reviewing them.</p>
+        <p>Ykiko describes using coding agents for debugging, cleanup, and increasingly complex implementation work. Agent assistance can make drafting changes faster. The release article gives no audited share of AI-generated code, and a commit count measures neither engineering effort nor review effort.</p>
         <p class="sources"><a href="https://ykiko.me/en/articles/2105384023094834022/#how-did-we-get-here">Author’s development account</a></p>
         <details class="commit-method">
           <summary>How I counted commits</summary>
@@ -137,18 +137,18 @@
         <dl class="method">
           <div><dt>Workload</dt><dd>723 existing translation units from the LLVM CMake compilation database at <code>bd49d77ae3c0</code>. The workload includes 245 units under <code>clang-tools-extra/clangd</code> and 478 under <code>clang-tools-extra/clang-tidy</code>. One stale database entry referred to a file absent from the checkout.</dd></div>
           <div><dt>Host and binaries</dt><dd>macOS 27.2.1 on arm64, eight logical CPUs and 8 GiB RAM. I used the official macOS binaries of clangd 23.1.0 and clice 1.0.0. The release article uses the same clangd version in its examples. Both received the same CMake commands with staged paths and the macOS 27.2 SDK. The commands kept the textual forced includes and dropped binary PCH inputs produced by the local compiler. <a href="https://github.com/clangd/clangd/releases/tag/23.1.0">clangd release</a> · <a href="https://github.com/clice-io/clice/releases/tag/v1.0.0">clice release</a></dd></div>
-          <div><dt>Timing</dt><dd>The timer starts when the harness sends the initialized and open-file messages. It stops at the last background-index progress-end event, including any extra clice passes for queued retries. I ran one server at a time in macOS Terminal with a fresh index cache for every run. The order was clangd, clice, clice, clangd, clangd, clice. I left macOS to manage its file caches normally.</dd></div>
+          <div><dt>Timing</dt><dd>Wall time from sending the initialized and open-file messages to the last background-index progress-end event. The harness follows clice’s additional passes when its logs show queued retries. I ran one server at a time in a regular macOS Terminal, with a fresh index cache for every run. The order was clangd, clice, clice, clangd, clangd, clice. OS file caches were left in their normal state.</dd></div>
           <div><dt>Worker settings</dt><dd>clangd ran with <code>-j=4</code> and normal background indexing priority. clice used <code>background = 4</code>, <code>max = 4</code>, <code>foreground = 1</code>, and <code>background_delay_ms = 0</code> under <code>[workers]</code>. Both had a background concurrency ceiling of four. clice can reduce concurrency under memory pressure.</dd></div>
-          <div><dt>Memory</dt><dd>The harness uses <code>proc_pid_rusage</code> to sample the process tree about every 200 ms. It computes the average and peak from the sum of each sample. Summing RSS can count a shared page more than once, and a short spike can fall between samples. The raw data also includes physical footprint.</dd></div>
+          <div><dt>Memory</dt><dd>macOS <code>proc_pid_rusage</code> was sampled about every 200 ms. Each row sums the resident set size of the server and all descendants. The mean averages those samples, and the peak is the largest sampled sum. Summed RSS can count shared pages in more than one process and can miss peaks between samples. Raw samples also include physical footprint.</dd></div>
           <div><dt>Index size</dt><dd>Logical bytes of the persisted symbol index after clean shutdown. The total covers clangd’s <code>*.idx</code> shards or clice’s <code>index.mdb</code> database. Locks, logs, PCH and PCM caches are outside this total. Filesystem-allocated bytes are also in the raw data. The formats and indexed coverage can differ.</dd></div>
-          <div><dt>Completion</dt><dd>A server can report that indexing ended even when it skipped some work. I checked the logs for the number of translation units each run actually indexed. All six runs covered the full set.</dd></div>
+          <div><dt>Completion</dt><dd>Translation-unit counts come from the server logs. A progress end event can also occur after skipped work. The results include coverage so a shorter or lower-memory incomplete run cannot be mistaken for an equivalent completed index. The two indexes record different information. Coverage here counts translation units in the logs.</dd></div>
         </dl>
         <p><a class="button" href="https://github.com/ArcsinX/clangd-vs-clice-benchmark">Benchmark scripts, input manifest, and raw data</a></p>
       </section>
       <section class="section conclusion" aria-labelledby="conclusion-title">
         <h2 id="conclusion-title">My take</h2>
-        <p>I’m glad clice exists. A compiler crash taking down the whole language server is a real problem, and isolating compiler work in separate processes is an idea I’d like to see more servers try. clice also does things I’d want if I were working heavily with C++20 modules or headers that need their includer.</p>
-        <p>I’d call clice a promising alternative. The “next-generation” label tells me very little about which tool will work better for a particular codebase. For this LLVM checkout, I’d take clangd’s shorter wait for a first index. For a project built around modules, I’d give clice’s editor support a closer look.</p>
+        <p>clice is a worthwhile project with ideas I’d like to see more language servers explore. Process isolation addresses a real reliability problem. Its work on named modules and non-self-contained headers makes a concrete difference for projects that use them.</p>
+        <p>Those strengths make clice an innovative alternative. Calling it a successor that surpasses clangd across the board would take much broader evidence. The label “next-generation” is too vague to settle which tool fits a given codebase. The workflows you use, the resources your machine has, and the support you can count on matter more.</p>
       </section>
     </div>
   </main>
