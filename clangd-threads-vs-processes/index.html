@@ -13,6 +13,7 @@
     .comparison table { min-width: 29rem; }
     .comparison :is(td, th):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .benchmark + .benchmark { margin-top: 1.5rem; }
+    .method-note { margin-top: .9rem; }
     figure { margin: 1.25rem 0 0; }
     .plot { display: block; }
     .plot img { display: block; width: 100%; min-width: 46rem; height: auto; }
@@ -30,6 +31,7 @@
     <div class="wrap intro">
       <p class="eyebrow">C++ language servers <span>·</span> November 2026</p>
       <h1>clangd threads <em>vs</em> processes</h1>
+      <p class="chart-caption method-note">Both modes used <code>--background-index-build-only</code>. clangd wrote index shards to disk without building an in-memory search index.</p>
     </div>
     <section class="wrap benchmark" id="benchmark" aria-labelledby="benchmark-title">
       <div class="benchmark-heading">
@@ -40,19 +42,19 @@
         <table>
           <thead><tr><th scope="col">Metric</th><th scope="col">4 threads</th><th scope="col">4 processes</th><th scope="col">Change</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Cold indexing time</th><td>293.1 s</td><td>375.0 s</td><td>+28%</td></tr>
-            <tr><th scope="row">Peak RSS during indexing</th><td>1,737 MiB</td><td>1,969 MiB</td><td>+13%</td></tr>
-            <tr><th scope="row">Average RSS during indexing</th><td>1,440 MiB</td><td>1,062 MiB</td><td>−26%</td></tr>
-            <tr><th scope="row">Settled RSS after indexing</th><td>1,547 MiB</td><td>733 MiB</td><td>−53%</td></tr>
-            <tr><th scope="row">Index reload time</th><td>1.94 s</td><td>1.87 s</td><td>−3%</td></tr>
-            <tr><th scope="row">Settled RSS after reload</th><td>703 MiB</td><td>707 MiB</td><td>+1%</td></tr>
+            <tr><th scope="row">Cold indexing time</th><td>300.5 s</td><td>380.0 s</td><td>+26%</td></tr>
+            <tr><th scope="row">Peak RSS during indexing</th><td>1,999 MiB</td><td>1,905 MiB</td><td>−5%</td></tr>
+            <tr><th scope="row">Average RSS during indexing</th><td>1,241 MiB</td><td>720 MiB</td><td>−42%</td></tr>
+            <tr><th scope="row">Settled RSS after indexing</th><td>1,198 MiB</td><td>154 MiB</td><td>−87%</td></tr>
+            <tr><th scope="row">Cache validation time</th><td>0.51 s</td><td>1.12 s</td><td>+122%</td></tr>
+            <tr><th scope="row">Settled RSS after cache validation</th><td>283 MiB</td><td>282 MiB</td><td>0%</td></tr>
           </tbody>
         </table>
       </div>
       <figure>
         <div class="table-scroll" tabindex="0" role="region" aria-label="RSS over time plot">
           <a class="plot" href="rss-over-time.svg">
-            <img src="rss-over-time.svg" alt="RSS traces. Four processes peaked at 1,969 MiB after 4.5 seconds. Four threads peaked at 1,737 MiB after 6.7 seconds.">
+            <img src="rss-over-time.svg" alt="Four threads peaked at 1,999 MiB at 4.7 s. Four processes peaked at 1,905 MiB at 5.0 s.">
           </a>
         </div>
         <figcaption class="chart-caption">One run per mode, with threads first. RSS includes the server and its workers and was sampled every 200 ms.</figcaption>
@@ -67,18 +69,17 @@
         <table>
           <thead><tr><th scope="col">Metric</th><th scope="col">4 threads</th><th scope="col">4 processes</th><th scope="col">Change</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Indexing time</th><td>293.9 s</td><td>374.0 s</td><td>+27%</td></tr>
-            <tr><th scope="row">Peak RSS in first 18 s</th><td>1,545 MiB</td><td>1,704 MiB</td><td>+10%</td></tr>
-            <tr><th scope="row">Peak RSS during indexing</th><td>1,661 MiB</td><td>1,745 MiB</td><td>+5%</td></tr>
-            <tr><th scope="row">Average RSS during indexing</th><td>1,366 MiB</td><td>1,133 MiB</td><td>−17%</td></tr>
-            <tr><th scope="row">Settled RSS after indexing</th><td>1,503 MiB</td><td>901 MiB</td><td>−40%</td></tr>
+            <tr><th scope="row">Indexing time</th><td>317.4 s</td><td>396.2 s</td><td>+25%</td></tr>
+            <tr><th scope="row">Peak RSS during indexing</th><td>1,409 MiB</td><td>1,894 MiB</td><td>+34%</td></tr>
+            <tr><th scope="row">Average RSS during indexing</th><td>1,119 MiB</td><td>683 MiB</td><td>−39%</td></tr>
+            <tr><th scope="row">Settled RSS after indexing</th><td>1,024 MiB</td><td>113 MiB</td><td>−89%</td></tr>
           </tbody>
         </table>
       </div>
       <figure>
         <div class="table-scroll" tabindex="0" role="region" aria-label="Seeded RSS over time plot">
           <a class="plot" href="rss-seeded.svg">
-            <img src="rss-seeded.svg" alt="Seeded RSS traces. Four threads peaked at 1,661 MiB after 284.7 seconds. Four processes peaked at 1,745 MiB after 329.8 seconds.">
+            <img src="rss-seeded.svg" alt="Four threads peaked at 1,409 MiB at 3.2 s. Four processes peaked at 1,894 MiB at 3.6 s.">
           </a>
         </div>
         <figcaption class="chart-caption">Each mode indexed <code>Background.cpp</code> first. Measurement started after clangd became idle and the remaining 728 files were queued in the same session.</figcaption>
